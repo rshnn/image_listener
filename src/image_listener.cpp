@@ -1,13 +1,12 @@
 #include <ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
-//#include <sensor_msgs/image_encodings.h>
+#include <sensor_msgs/image_encodings.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <tf/transform_listener.h>
 #include "threshold.cpp"
-#include <sensor_msgs/>
-//#include <tuple>
+//#include <sensor_msgs/>
 
 void imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
