@@ -10,12 +10,16 @@ find_package(catkin REQUIRED COMPONENTS
   tf
 )
 
+
 catkin_package(
-#  INCLUDE_DIRS include
+  INCLUDE_DIRS #include
 #  LIBRARIES image_listener
 #  CATKIN_DEPENDS roscpp rospy std_msgs
 #  DEPENDS system_lib
 )
+
+add_definitions(-std=c++11)
+
 
 include_directories(
   ${catkin_INCLUDE_DIRS}
