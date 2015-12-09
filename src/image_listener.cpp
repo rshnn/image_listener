@@ -15,12 +15,12 @@ class ImageListener
 {
 private:
   ros::NodeHandle nh_;
-  image_transport::ImageTransport transporter_;
-  image_transport::Subscriber camera_sub_;
+  image_transport::ImageTransport     transporter_;
+  image_transport::Subscriber         camera_sub_;
+  image_transport::CameraSubscriber   caminfo_sub_;
 
-  tf::StampedTransform tf_target_;
-  tf::StampedTransform tf_transform_;
-  tf::TransformListener tf_listener_;
+  tf::StampedTransform                tf_transform_;
+  tf::TransformListener               tf_listener_;
 
 
 public:
@@ -28,16 +28,25 @@ public:
   ImageListener() : transporter_(nh_)
   {
     camera_sub_ = transporter_.subscribe("/cameras/left_hand_camera/image", 1, &ImageListener::image_callback, this);
-    std::cout << "Subscribed to images" << std::endl;
-
-    //tf::TransformListener tf_listener;
+    //caminfo_sub_ = transporter_.subscribeCamera("/cameras/left_hand_camera/camera_info", 1, &ImageListener::info_callback, this);
+   
+    std::cout << "Subscribed to left_hand_camera" << std::endl;
     ros::Duration(10).sleep();
   }
 
+  void info_callback(const sensor_msgs::ImageConstPtr, const sensor_msgs::CameraInfoConstPtr msg){
 
-  /* /image callback */
+    std::cout<< "info_callback" << std::endl;
+
+  }
+
+
+
+  /* /cameras/left_hand_camera/image callback */
   void image_callback(const sensor_msgs::ImageConstPtr& msg)
   {
+
+    std::cout << "image_callback" << std::endl;
 
     /* PARAMETERS FROM CAMERA_INFO ROSTOPIC */
     double fx = 410.11718731515947;
@@ -45,7 +54,6 @@ public:
     double cx = 666.1770143433905;
     double cy = 447.51876027944303;
     
-    std::cout << "imageCallback" << std::endl;
 
     cv_bridge::CvImagePtr camera_image;
     try
@@ -101,8 +109,9 @@ public:
 
 
 
-    //tf::StampedTransform transform;
+    /* APPLYING HOMO_TRANSFOMS FROM /TF */
 
+    //p_0 = H^0_1 *p_1
     try{
       tf_listener_.lookupTransform("/left_hand_camera", "/base", ros::Time(0), tf_transform_);
       std::cout << "~~SUCCESS" << std::endl;
@@ -112,10 +121,29 @@ public:
       //ros::Duration(1.0).sleep();
     }
 
-    std::cout << tf_transform_.getOrigin().y() << std::endl;
-    
+    /* Homoegenous transformation (camera -> base) parameters */
+    //Individual parameters
+    double x, y, z; 
+    double qw, qx, qy, qz; 
+    x = tf_transform_.getOrigin().x();
+    y = tf_transform_.getOrigin().y();
+    z = tf_transform_.getOrigin().z();
+    qx = tf_transform_.getRotation().x();
+    qy = tf_transform_.getRotation().y();
+    qz = tf_transform_.getRotation().z();
+    qw = tf_transform_.getRotation().w();
 
-    std::cout << "End imageCallback" << std::endl;   
+    // The 3x3 rotation matrix and 3x1 translation vector.
+    tf::Matrix3x3 homo_rotation = tf_transform_.getBasis();
+    tf::Vector3 homo_translation = tf_transform_.getOrigin();
+
+
+
+    
+    std::cout << tf_transform_.getOrigin().x() <<" "<< tf_transform_.getOrigin().y() << " "<< tf_transform_.getOrigin().z() << std::endl;
+
+
+    std::cout << "End image_callback" << std::endl;   
   } 
 
 

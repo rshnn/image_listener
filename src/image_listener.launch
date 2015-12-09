@@ -1,0 +1,6 @@
+  <launch>
+
+    <!-- Image_listener Node-->
+    <node pkg="image_listener" type="image_listener_node" name="image_listener_node"/>
+
+  </launch>
