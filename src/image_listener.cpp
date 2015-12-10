@@ -1,5 +1,6 @@
 #include <ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
+#include <std_msgs/String.h>
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/image_encodings.h>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -8,7 +9,6 @@
 #include "threshold.cpp"
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/CameraInfo.h>
-
 
 
 class ImageListener
@@ -22,6 +22,7 @@ private:
   tf::StampedTransform                tf_transform_;
   tf::TransformListener               tf_listener_;
 
+  ros::Publisher                      object_publisher_;  
 
 public:
   /* CONSTRUCTOR */
@@ -29,6 +30,7 @@ public:
   {
     camera_sub_ = transporter_.subscribe("/cameras/left_hand_camera/image", 1, &ImageListener::image_callback, this);
     //caminfo_sub_ = transporter_.subscribeCamera("/cameras/left_hand_camera/camera_info", 1, &ImageListener::info_callback, this);
+    object_publisher_ = nh_.advertise<std_msgs::String>("detected_objects", 1000);
    
     std::cout << "Subscribed to left_hand_camera" << std::endl;
     ros::Duration(10).sleep();
@@ -111,7 +113,7 @@ public:
 
     /* APPLYING HOMO_TRANSFOMS FROM /TF */
 
-    //p_0 = H^0_1 *p_1
+    //p_0 = H^0_1 *p_1     Point in frame 0 is the multiplication of the homogen_matrix times the point in frame1
     try{
       tf_listener_.lookupTransform("/left_hand_camera", "/base", ros::Time(0), tf_transform_);
       std::cout << "~~SUCCESS" << std::endl;
@@ -136,11 +138,20 @@ public:
     // The 3x3 rotation matrix and 3x1 translation vector.
     tf::Matrix3x3 homo_rotation = tf_transform_.getBasis();
     tf::Vector3 homo_translation = tf_transform_.getOrigin();
+    //std::cout << tf_transform_.getOrigin().x() <<" "<< tf_transform_.getOrigin().y() << " "<< tf_transform_.getOrigin().z() << std::endl;
 
 
 
-    
-    std::cout << tf_transform_.getOrigin().x() <<" "<< tf_transform_.getOrigin().y() << " "<< tf_transform_.getOrigin().z() << std::endl;
+
+
+    /* PUBLISH INFO ON OBJECT LOCATION AND COLOR TO ROSTOPIC /DETECTED_OBJECTS */
+    std_msgs::String message;
+    std::stringstream ss;
+    ss << "Hello";
+    message.data = ss.str();
+
+    object_publisher_.publish(message);
+
 
 
     std::cout << "End image_callback" << std::endl;   
