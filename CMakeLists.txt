@@ -8,15 +8,33 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   cv_bridge
   tf
+  message_generation
 )
 
+#rosbuild_genmsg()
+
+
+add_message_files(
+  FILES
+  Num.msg
+)
+
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
 
 catkin_package(
   INCLUDE_DIRS src
   LIBRARIES image_listener_lib
-  CATKIN_DEPENDS roscpp rospy std_msgs image_transport cv_bridge tf
+  CATKIN_DEPENDS roscpp rospy std_msgs image_transport cv_bridge tf message_generation
   DEPENDS system_lib
 )
+
+
+
+
 
 add_definitions(-std=c++11)
 

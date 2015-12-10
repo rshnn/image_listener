@@ -9,7 +9,7 @@
 #include "threshold.cpp"
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/CameraInfo.h>
-
+#include <image_listener/Num.h>
 
 class ImageListener
 {
@@ -30,8 +30,10 @@ public:
   {
     camera_sub_ = transporter_.subscribe("/cameras/left_hand_camera/image", 1, &ImageListener::image_callback, this);
     //caminfo_sub_ = transporter_.subscribeCamera("/cameras/left_hand_camera/camera_info", 1, &ImageListener::info_callback, this);
-    object_publisher_ = nh_.advertise<std_msgs::String>("detected_objects", 1000);
+    //object_publisher_ = nh_.advertise<std_msgs::String>("detected_objects", 1000);
+    object_publisher_ = nh_.advertise<image_listener::Num>("detected_objects", 1000);
    
+
     std::cout << "Subscribed to left_hand_camera" << std::endl;
     ros::Duration(10).sleep();
   }
@@ -145,13 +147,17 @@ public:
 
 
     /* PUBLISH INFO ON OBJECT LOCATION AND COLOR TO ROSTOPIC /DETECTED_OBJECTS */
-    std_msgs::String message;
-    std::stringstream ss;
-    ss << "Hello";
-    message.data = ss.str();
+    // std_msgs::String message;
+    // std::stringstream ss;
+    // ss << "Hello";
+    // message.data = ss.str();
+
+    // object_publisher_.publish(message);
+
+    image_listener::Num message;
+    message.num = 5;
 
     object_publisher_.publish(message);
-
 
 
     std::cout << "End image_callback" << std::endl;   
