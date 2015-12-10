@@ -147,16 +147,16 @@ public:
 
 
     /* PUBLISH INFO ON OBJECT LOCATION AND COLOR TO ROSTOPIC /DETECTED_OBJECTS */
-    // std_msgs::String message;
-    // std::stringstream ss;
-    // ss << "Hello";
-    // message.data = ss.str();
-
-    // object_publisher_.publish(message);
-
+    /*
+      Still playing around with this.  Check msg/Num.msg for the elements inside the Num message.  Currently adding dummy data into the msg.
+    */
+    string dummy_colors[] = {"red", "yellow", "blue", "red", "yellow", "blue", "red", "yellow"};
+    float dummy_SE3[7] = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
     image_listener::Num message;
-    message.num = 5;
 
+    //Cant figure out why, but I cant pass the arrays declared above^ directly into the message.  probably some type casting needed or something.
+    message.colors = {"red", "yellow", "blue", "red", "yellow", "blue", "red", "yellow"};
+    message.object1 = {1.0, -3.14, 42.0};
     object_publisher_.publish(message);
 
 
