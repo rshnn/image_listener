@@ -15,6 +15,8 @@
 #include "threshold.hpp"
 #include "pixel_coord_transform.hpp"
 
+using namespace cv;
+
 class ImageListener
 {
 private:
@@ -124,6 +126,8 @@ public:
 	std::ofstream output_file;
 	output_file.open("image_debug.txt");
 
+	output_file << "Image size: " << image.size() << std::endl;
+
 	std::vector<tf::Vector3> global_coords;
 
 	int i = 0;
@@ -131,7 +135,8 @@ public:
 		Mat masked = mask_by_component(component_output, COMPONENT_SEPARATION_CONST*c);
 		Moments m = moments(masked, true);
 
-		if (m.m00 < 4000) {
+		double min_comp_size = masked.cols*masked.rows/300;
+		if (m.m00 < min_comp_size) {
 			continue;
 		}
 		i++;
@@ -157,18 +162,18 @@ public:
 
 		circle( orientation,
 			Point(c_x, c_y),
-			10,
+			5,
 			Scalar(0, 0, 0),
 			thickness,
 			lineType );
 
-		int axisLength = m.m00/300;
+		int axisLength = m.m00/100;
 
 		line( orientation,
 			Point(c_x, c_y),
 			Point(c_x+axisLength*cos(axis), c_y+axisLength*sin(axis)),
 			Scalar(0, 0, 0),
-			10,
+			5,
 			lineType);
 
 		int fontFace = FONT_HERSHEY_SCRIPT_SIMPLEX;
@@ -179,13 +184,16 @@ public:
 		putText(orientation, text, Point(c_x, c_y-20), fontFace, fontScale,
 						Scalar::all(0), textThickness, 8);
 
-		tf::Vector3 cam = pixel_to_image_plane_transform(c_x, c_y, primary_x, primary_y, fx, fy, z);
-		global_coords.push_back(tf_transform_.invXform(cam));
+		tf::Vector3 cam_frame = pixel_to_image_plane_transform(c_x, c_y, primary_x, primary_y, fx, fy, z);
+		tf::Vector3 global_frame = tf_transform_.invXform(cam_frame);
+		global_coords.push_back(global_frame);
+
 		// I'm not sure if these calculations are correct
 		double l_1 = m.mu20 - m.mu02 + sqrt(4*SQ(m.mu11) + SQ(m.mu20 - m.mu02));
 		double l_2 = m.mu20 - m.mu02 - sqrt(4*SQ(m.mu11) + SQ(m.mu20 - m.mu02));
 		double eccentricity = sqrt(1- l_2/l_1);
 
+		output_file << "estimated coordinates: " << global_frame.getX() << " " << global_frame.getY() << " " << global_frame.getZ() << std::endl;
 		output_file << "centroid: " << c_x << ", " << c_y << std::endl;
 		output_file << "axis of orientation: " << axis << std::endl;
 		output_file << "eccentricity: " << eccentricity << std::endl;
