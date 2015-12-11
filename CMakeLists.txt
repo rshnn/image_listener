@@ -33,9 +33,6 @@ catkin_package(
 )
 
 
-
-
-
 add_definitions(-std=c++11)
 
 
@@ -43,7 +40,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-add_executable(image_listener_node src/image_listener.cpp)
+add_executable(image_listener_node src/image_listener.cpp src/threshold.cpp src/pixel_coord_transform.cpp)
 
 add_dependencies(image_listener_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 

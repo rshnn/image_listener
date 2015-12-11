@@ -8,31 +8,32 @@
 
 using namespace cv;
 
+#define COMPONENT_SEPARATION_CONST 7001
+
+#define SQ(x) (x)*(x)
+
 // get image
 
-std::vector<std::tuple<int,int,int> > get_image(int &width, int &height);
+Mat get_image(char *image_file, int &width, int &height);
 
-
-std::vector<std::tuple<int,int,int> > get_image_cvMat(Mat image, int &width, int &height);
-
-std::vector<int> convert_to_greyscale(std::vector<std::tuple<int,int,int> > image, int width, int height);
+Mat convert_to_greyscale(Mat image);
 
 // thresholding functions
 
-std::vector<int> create_histogram(std::vector<int> greyscale, int width, int height);
+std::vector<int> create_histogram(Mat greyscale);
 
 std::vector<double> memoize_P(std::vector<int> histogram, int width, int height);
 
 double variance(std::vector<double> P);
 
-int automatic_threshold(std::vector<int> greyscale, int width, int height);
+int automatic_threshold(Mat greyscale);
 
-Mat threshold_image(std::vector<int> greyscale, int width, int height);
+Mat threshold_image(Mat greyscale);
 
 
 // connectivity functions
 
-Mat connect_image(Mat binarized);
+Mat connected_components(Mat binarized, std::vector<uint16_t> &components);
 
 
 // moment functions
@@ -40,7 +41,8 @@ Mat connect_image(Mat binarized);
 
 // misc functions
 
-Mat mask_by_color(Mat componentized, uint16_t value);
+Mat mask_by_component(Mat componentized, uint16_t value);
 
+Scalar component_avg_color(Mat original, Mat component);
 
 #endif // THRESHOLD_HPP_

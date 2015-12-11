@@ -11,17 +11,13 @@
 
 #include "threshold.hpp"
 
-// N is just the maximum value a pixel can take
-#define N 255
-
 #define COMPONENT_SEPARATION_CONST 7001
 
-#define index_image(image, x, y) (image)[(y)*(width)+(x)]
+#define SQ(x) (x)*(x)
 
 using namespace cv;
 
-std::vector<std::tuple<int,int,int> > get_image(char *image_file, int &width, int &height) {
-	std::vector<std::tuple<int,int,int> >image;
+Mat get_image(char *image_file, int &width, int &height) {
 	Mat cv_img;
 	cv_img = imread(image_file, 1);
 	Mat cv_blur = cv_img.clone();
@@ -30,86 +26,74 @@ std::vector<std::tuple<int,int,int> > get_image(char *image_file, int &width, in
 	width = cv_img.cols;
 	height = cv_img.rows;
 
-	for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++) {
-			Vec3b pix = cv_blur.at<Vec3b>(y,x);
-			// pix is BRG and we want RGB so 1 2 0
-			image.push_back(std::make_tuple(pix[1], pix[2], pix[0]));
-		}
-	}
-
-	return image;
+	return cv_blur;
 }
 
+Mat convert_to_greyscale(Mat image) {
+	Mat greyscale;
+	cvtColor(image, greyscale, CV_BGR2GRAY);
 
+	// Sobel example from http://docs.opencv.org/2.4/doc/tutorials/imgproc/imgtrans/sobel_derivatives/sobel_derivatives.html
+	int scale = 1;
+	int delta = 0;
+	int ddepth = CV_16S;
 
-std::vector<std::tuple<int,int,int> > get_image_cvMat(Mat input_image, int &width, int &height) {
-	
-	std::vector<std::tuple<int,int,int> >image;
-	Mat cv_img = input_image;
-	//cv_img = imread(image_file, 1);
+	Mat grad;
+	Mat grad_x, grad_y;
+	Mat abs_grad_x, abs_grad_y;
 
-	Mat cv_blur = cv_img.clone();
-	GaussianBlur(cv_img, cv_blur, Size(3,3), 0, 0);
+	// Gradient X
+	Sobel( greyscale, grad_x, ddepth, 1, 0, CV_SCHARR, scale, delta, BORDER_DEFAULT );
+	convertScaleAbs( grad_x, abs_grad_x );
 
-	width = cv_img.cols;
-	height = cv_img.rows;
+	// Gradient Y
+	Sobel( greyscale, grad_y, ddepth, 0, 1, CV_SCHARR, scale, delta, BORDER_DEFAULT );
+	convertScaleAbs( grad_y, abs_grad_y );
 
-	for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++) {
-			Vec3b pix = cv_blur.at<Vec3b>(y,x);
-			// pix is BRG and we want RGB so 1 2 0
-			image.push_back(std::make_tuple(pix[1], pix[2], pix[0]));
-		}
-	}
-
-	return image;
-}
-
-
-std::vector<int> convert_to_greyscale(std::vector<std::tuple<int,int,int> > image, int width, int height) {
-	// There are many ways to convert to 'greyscale', since it isn't unique. Here we use a very simple one.
-	std::vector<int> greyscale(width*height, 0);
-
-	for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++) {
-			std::tuple<int,int,int> pix = index_image(image, x, y);
-			int r = std::get<0>(pix);
-			int g = std::get<1>(pix);
-			int b = std::get<2>(pix);
-			index_image(greyscale, x, y) = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-		}
-	}
+	// Total Gradient (approximate)
+	addWeighted( abs_grad_x, 0.5, abs_grad_y, 0.5, 0, grad );
+	imwrite("sobel.png", grad);	
 
 	// The following part is required because otherwise P[0] becomes 0
 	// and we get division by zero errors when computing the between-group variance.
-	int min_val = 255;
-	for (int v: greyscale) {
-		if (v < min_val) {
-			min_val = v;
+	uchar min_val = UCHAR_MAX;
+	for (int y = 0; y < greyscale.rows; y++) {
+		for (int x = 0; x < greyscale.cols; x++) {
+			uchar v = greyscale.at<uchar>(y,x);
+			if (v < min_val) {
+					min_val = v;
+			}
 		}
 	}
-	for (int &v: greyscale) {
-		v -= min_val;
+
+	for (int y = 0; y < greyscale.rows; y++) {
+		for (int x = 0; x < greyscale.cols; x++) {
+			greyscale.at<uchar>(y,x) -= min_val;
+		}
 	}
 
-	return greyscale;
+
+	Mat sub = greyscale-grad;
+	imwrite("sub.png", sub);
+	return sub;
 }
 
-std::vector<int> create_histogram(std::vector<int> greyscale, int width, int height) {
-	std::vector<int> histogram(N, 0);
+std::vector<int> create_histogram(Mat greyscale) {
+	int width = greyscale.cols;
+	int height = greyscale.rows;
+	std::vector<int> histogram(UCHAR_MAX, 0);
 	for (int y = 0; y < height; y++) {
 		for (int x = 0; x < width; x++) {
-			histogram[index_image(greyscale,x,y)]+=1;
+			histogram[greyscale.at<uchar>(y,x)]+=1;
 		}
 	}
 	return histogram;
 }	
 
 std::vector<double> memoize_P(std::vector<int> histogram, int width, int height) {
-	std::vector<double> P(N, 0);
+	std::vector<double> P(UCHAR_MAX, 0);
 	int size = width*height;
-	for (int z = 0; z < N; z++) {
+	for (int z = 0; z < UCHAR_MAX; z++) {
 		P[z] = ((double)histogram[z])/size;
 	}
 	return P;
@@ -117,29 +101,31 @@ std::vector<double> memoize_P(std::vector<int> histogram, int width, int height)
 
 double variance(std::vector<double> P) {
 	double mu = 0.0;
-	for (int z = 0; z < N; z++) {
+	for (int z = 0; z < UCHAR_MAX; z++) {
 		mu += z*P[z];
 	}
 	double total_variance = 0.0;
-	for (int z = 0; z < N; z++) {
+	for (int z = 0; z < UCHAR_MAX; z++) {
 		total_variance += (z - mu)*(z - mu) * P[z];
 	}
 	return total_variance;
 }
 
-int automatic_threshold(std::vector<int> greyscale, int width, int height) {
-	std::vector<int> histogram = create_histogram(greyscale, width, height);
+int automatic_threshold(Mat greyscale) {
+	int width = greyscale.cols;
+	int height = greyscale.rows;
+	std::vector<int> histogram = create_histogram(greyscale);
 
 	std::vector<double> P = memoize_P(histogram, width, height);
 	//double total_variance = variance(P);
-	std::vector<double> between_variance(N, 0.0);
+	std::vector<double> between_variance(UCHAR_MAX, 0.0);
 
-	std::vector<double> q_0(N, 0.0);
-	std::vector<double> mu_0(N, 0.0);
-	std::vector<double> mu_1(N, 0.0);
+	std::vector<double> q_0(UCHAR_MAX, 0.0);
+	std::vector<double> mu_0(UCHAR_MAX, 0.0);
+	std::vector<double> mu_1(UCHAR_MAX, 0.0);
 
 	double mu = 0.0;
-	for (int z = 0; z < N; z++) {
+	for (int z = 0; z < UCHAR_MAX; z++) {
 		mu += z*P[z];
 	}
 
@@ -149,7 +135,7 @@ int automatic_threshold(std::vector<int> greyscale, int width, int height) {
 	mu_1[0] = mu/(1 - q_0[0]); // since mu = q_1*mu_0 + q_1*mu_1, mu_0[0] = 0, and q_1 = 1-q_0
 
 	between_variance[0] = q_0[0]*(1 - q_0[0])*(mu_0[0] - mu_1[0])*(mu_0[0] - mu_1[0]);
-	for (int z = 1; z < N; z++) {
+	for (int z = 1; z < UCHAR_MAX; z++) {
 		q_0[z] = P[z] + q_0[z-1];
 		mu_0[z] = (z * P[z])/q_0[z] + (mu_0[z-1]*q_0[z-1])/q_0[z];
 		mu_1[z] = (mu - q_0[z]*mu_0[z])/(1 - q_0[z]);
@@ -158,7 +144,7 @@ int automatic_threshold(std::vector<int> greyscale, int width, int height) {
 
 	double max_between_variance = between_variance[0];
 	int max_threshold = 0;
-	for (int z = 0; z < N; z++) {
+	for (int z = 0; z < UCHAR_MAX; z++) {
 		double b = between_variance[z];
 		if (b > max_between_variance) {
 			max_threshold = z;
@@ -169,17 +155,20 @@ int automatic_threshold(std::vector<int> greyscale, int width, int height) {
 	return max_threshold;
 }
 
-Mat threshold_image(std::vector<int> greyscale, int width, int height) {
-	int threshold = automatic_threshold(greyscale, width, height);
-	std::cout << "Threshold value from Otsu: " << threshold << std::endl;
+Mat threshold_image(Mat greyscale) {
+	int threshold = automatic_threshold(greyscale);
+	//std::cout << "Threshold value from Otsu: " << threshold << std::endl;
+
+	int width = greyscale.cols;
+	int height = greyscale.rows;
 
 	// because reflections and lighting and stuff
-	int threshold_extra_constant = 30;
+	int threshold_extra_constant = 10;
 
 	Mat output(height, width, CV_8U);
 	for (int y = 0; y < height; y++) {
 		for (int x = 0; x < width; x++) {
-			if (index_image(greyscale, x, y) <= threshold+threshold_extra_constant) {
+			if (greyscale.at<uchar>(y,x) <= threshold+threshold_extra_constant) {
 				output.at<uchar>(y, x) = 255;
 			}
 			else {
@@ -241,7 +230,7 @@ Mat connected_components(Mat binarized, std::vector<uint16_t> &components) {
 		for (int x = 0; x < output.cols; x++) {
 			uint16_t id = output.at<uint16_t>(y,x);
 			if (id == 0) {
-				output.at<uint16_t>(y,x) = 65535;
+				output.at<uint16_t>(y,x) = UINT16_MAX;
 			   	continue;
 			}
 			uint16_t fill_id = component_ids[id];
@@ -266,23 +255,25 @@ Mat connected_components(Mat binarized, std::vector<uint16_t> &components) {
 	return output;
 }
 
-Mat mask_by_color(Mat componentized, uint16_t value) {
-	Mat output = componentized.clone();
+Mat mask_by_component(Mat componentized, uint16_t value) {
+	Mat output(componentized.size(), CV_8U);
 	for (int y = 0; y < output.rows; y++) {
 		for (int x = 0; x < output.cols; x++) {
 			uint16_t pix = componentized.at<uint16_t>(y, x);
 			if (pix == value) {
-				output.at<uint16_t>(y, x) = value;
+				output.at<uchar>(y, x) = UCHAR_MAX;
 			}
 			else {
-				output.at<uint16_t>(y,x) = 0;
+				output.at<uchar>(y,x) = 0;
 			}
 		}
 	}
 	return output;
 }
 
-
+Scalar component_avg_color(Mat original, Mat component) {
+	return mean(original, component);
+}
 /*
 int main(int argc, char **argv) {
 	if (argc != 2) {
@@ -291,47 +282,84 @@ int main(int argc, char **argv) {
 	}
 	std::cout << argv[1] << std::endl;
 	int width, height;
-	std::vector<std::tuple<int,int,int> > image = get_image(argv[1], width, height);
-	std::vector<int> greyscale = convert_to_greyscale(image, width, height);
+	Mat image = get_image(argv[1], width, height);
+	Mat greyscale = convert_to_greyscale(image);
 
 	Mat output = threshold_image(greyscale, width, height);
 	imwrite(std::string(argv[1]) + std::string(".threshold.png"), output);
-	cv::imshow("threshold", output);
 
 	std::vector<uint16_t> components;
 	Mat component_output = connected_components(output, components);
 	imwrite(std::string(argv[1]) + std::string(".connected_output.png"), component_output);
 
-	//imshow("threshold_image", output);
-	cv::imshow("component_output", component_output);
+	Mat hsv_image(image.size(), image.type());
+	cvtColor(image, hsv_image, CV_BGR2HSV);
 
-	Mat orientation = imread(argv[1], 1);
+	Mat orientation = image.clone();
+
+	int i = 0;
 	for (uint16_t c: components) {
-		Moments m = moments(mask_by_color(component_output, 7001*c), true);
+		Mat masked = mask_by_component(component_output, COMPONENT_SEPARATION_CONST*c);
+		Moments m = moments(masked, true);
 
-		if (m.m00 < 1000) {
+		if (m.m00 < 4000) {
 			continue;
 		}
+		i++;
+		std::cout << "Component ID: " << i << std::endl;
+
+		Scalar avg_color = component_avg_color(hsv_image, masked);
+		std::cout << "Component HSV color: " << avg_color << std::endl;
+		std::cout << "H^2 + S^2: " << SQ(avg_color[0]) + SQ(avg_color[1]) << std::endl;
+
 		int thickness = -1;
 		int lineType = 8;
 
 		double c_x = m.m10/m.m00;
 		double c_y = m.m01/m.m00;
 
-		circle( orientation,
-			 Point(c_x, c_y),
-			 10,
-			 Scalar( 0, 0, 255 ),
-			 thickness,
-			 lineType );
+		double axis = atan((2*m.mu11)/(m.mu20 - m.mu02))/2.0;
 
-		double axis = m.mu11/(m.mu20 - m.mu02);
+		// see http://www.via.cornell.edu/ece547/text/survey.pdf
+		if (m.mu20 - m.mu02 <= 0) {
+			axis+= M_PI/2.0;
+		}
+
+		circle( orientation,
+			Point(c_x, c_y),
+			10,
+			Scalar(0, 0, 0),
+			thickness,
+			lineType );
+
+		int axisLength = m.m00/300;
+
+		line( orientation,
+			Point(c_x, c_y),
+			Point(c_x+axisLength*cos(axis), c_y+axisLength*sin(axis)),
+			Scalar(0, 0, 0),
+			10,
+			lineType);
+
+		int fontFace = FONT_HERSHEY_SCRIPT_SIMPLEX;
+		double fontScale = 1;
+		int textThickness = 3;
+		char text[3];
+		sprintf(text, "%d", i);
+		putText(orientation, text, Point(c_x, c_y-20), fontFace, fontScale,
+						Scalar::all(0), textThickness, 8);
+
+
+		// I'm not sure if these calculations are correct
+		double l_1 = m.mu20 - m.mu02 + sqrt(4*SQ(m.mu11) + SQ(m.mu20 - m.mu02));
+		double l_2 = m.mu20 - m.mu02 - sqrt(4*SQ(m.mu11) + SQ(m.mu20 - m.mu02));
+		double eccentricity = sqrt(1- l_2/l_1);
+
 		std::cout << "centroid: " << c_x << ", " << c_y << std::endl;
-		std::cout << "axis of orientation: " << axis << std::endl;		
+		std::cout << "axis of orientation: " << axis << std::endl;
+		std::cout << "eccentricity: " << eccentricity << std::endl;
+		std::cout << std::endl;
 	}
 	imwrite(std::string(argv[1]) + std::string(".orientation_output.png"), orientation);
-
-	//imshow("Orientation", orientation);
-	//waitKey(3);
 }
 */

@@ -1,3 +1,5 @@
+#include <fstream>
+
 #include <ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
 #include <std_msgs/String.h>
@@ -6,10 +8,12 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <tf/transform_listener.h>
-#include "threshold.cpp"
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <image_listener/Num.h>
+
+#include "threshold.hpp"
+#include "pixel_coord_transform.hpp"
 
 class ImageListener
 {
@@ -55,64 +59,9 @@ public:
     /* PARAMETERS FROM CAMERA_INFO ROSTOPIC */
     double fx = 410.11718731515947;
     double fy = 410.51120062506004;
-    double cx = 666.1770143433905;
-    double cy = 447.51876027944303;
+    double primary_x = 666.1770143433905;
+    double primary_y = 447.51876027944303;
     
-
-    cv_bridge::CvImagePtr camera_image;
-    try
-    {
-      camera_image = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
-    }
-    catch (cv_bridge::Exception& e)
-    {
-      ROS_ERROR("cv_bridge exception: %s", e.what());
-      return;
-    }
-
-    int width, height;
-    std::vector<std::tuple<int,int,int> > image = get_image_cvMat(camera_image->image, width, height);
-    std::vector<int> greyscale = convert_to_greyscale(image, width, height);
-
-    cv::Mat output = threshold_image(greyscale, width, height);
-    
-    std::vector<uint16_t> components;
-    Mat component_output = connected_components(output, components);
-    //imwrite(std::string(argv[1]) + std::string(".connected_output.png"), component_output);
-
-    Mat orientation = camera_image->image; // imread(argv[1], 1);
-    for (uint16_t c: components) {
-      Moments m = moments(mask_by_color(component_output, 7001*c), true);
-
-      if (m.m00 < 1000) {
-        continue;
-      }
-      int thickness = -1;
-      int lineType = 8;
-
-      double c_x = m.m10/m.m00;
-      double c_y = m.m01/m.m00;
-
-      circle( orientation,
-         Point(c_x, c_y),
-         10,
-         Scalar( 0, 0, 255 ),
-         thickness,
-         lineType );
-
-      double axis = m.mu11/(m.mu20 - m.mu02);
-      //std::cout << "centroid: " << c_x << ", " << c_y << std::endl;
-      //std::cout << "axis of orientation: " << axis << std::endl; 
-    }
-
-    cv::imshow("threshold_image", output);
-    cv::imshow("component_output", component_output);
-    cv::imshow("orientation", orientation);
-    cv::waitKey(5);
-  
-
-
-
     /* APPLYING HOMO_TRANSFOMS FROM /TF */
 
     //p_0 = H^0_1 *p_1     Point in frame 0 is the multiplication of the homogen_matrix times the point in frame1
@@ -141,6 +90,114 @@ public:
     tf::Matrix3x3 homo_rotation = tf_transform_.getBasis();
     tf::Vector3 homo_translation = tf_transform_.getOrigin();
     //std::cout << tf_transform_.getOrigin().x() <<" "<< tf_transform_.getOrigin().y() << " "<< tf_transform_.getOrigin().z() << std::endl;
+
+
+
+    cv_bridge::CvImagePtr camera_image;
+    try
+    {
+      camera_image = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+      ROS_ERROR("cv_bridge exception: %s", e.what());
+      return;
+    }
+
+	Mat _image = camera_image->image.clone();
+	int width = _image.cols;
+	int height = _image.rows;
+	Mat image(_image.size(), _image.type());
+	GaussianBlur(_image, image, Size(3,3), 0, 0);
+	Mat greyscale = convert_to_greyscale(image);
+
+	Mat output = threshold_image(greyscale);
+
+	std::vector<uint16_t> components;
+	Mat component_output = connected_components(output, components);
+
+	Mat hsv_image(image.size(), image.type());
+	cvtColor(image, hsv_image, CV_BGR2HSV);
+
+	Mat orientation = image.clone();
+
+	std::ofstream output_file;
+	output_file.open("image_debug.txt");
+
+	std::vector<tf::Vector3> global_coords;
+
+	int i = 0;
+	for (uint16_t c: components) {
+		Mat masked = mask_by_component(component_output, COMPONENT_SEPARATION_CONST*c);
+		Moments m = moments(masked, true);
+
+		if (m.m00 < 4000) {
+			continue;
+		}
+		i++;
+		output_file << "Component ID: " << i << std::endl;
+
+		Scalar avg_color = component_avg_color(hsv_image, masked);
+		output_file << "Component HSV color: " << avg_color << std::endl;
+		output_file << "H^2 + S^2: " << SQ(avg_color[0]) + SQ(avg_color[1]) << std::endl;
+
+		int thickness = -1;
+		int lineType = 8;
+
+		// centroids
+		double c_x = m.m10/m.m00;
+		double c_y = m.m01/m.m00;
+
+		double axis = atan((2*m.mu11)/(m.mu20 - m.mu02))/2.0;
+
+		// see http://www.via.cornell.edu/ece547/text/survey.pdf
+		if (m.mu20 - m.mu02 <= 0) {
+			axis+= M_PI/2.0;
+		}
+
+		circle( orientation,
+			Point(c_x, c_y),
+			10,
+			Scalar(0, 0, 0),
+			thickness,
+			lineType );
+
+		int axisLength = m.m00/300;
+
+		line( orientation,
+			Point(c_x, c_y),
+			Point(c_x+axisLength*cos(axis), c_y+axisLength*sin(axis)),
+			Scalar(0, 0, 0),
+			10,
+			lineType);
+
+		int fontFace = FONT_HERSHEY_SCRIPT_SIMPLEX;
+		double fontScale = 1;
+		int textThickness = 3;
+		char text[3];
+		sprintf(text, "%d", i);
+		putText(orientation, text, Point(c_x, c_y-20), fontFace, fontScale,
+						Scalar::all(0), textThickness, 8);
+
+		tf::Vector3 cam = pixel_to_image_plane_transform(c_x, c_y, primary_x, primary_y, fx, fy, z);
+		global_coords.push_back(tf_transform_.invXform(cam));
+		// I'm not sure if these calculations are correct
+		double l_1 = m.mu20 - m.mu02 + sqrt(4*SQ(m.mu11) + SQ(m.mu20 - m.mu02));
+		double l_2 = m.mu20 - m.mu02 - sqrt(4*SQ(m.mu11) + SQ(m.mu20 - m.mu02));
+		double eccentricity = sqrt(1- l_2/l_1);
+
+		output_file << "centroid: " << c_x << ", " << c_y << std::endl;
+		output_file << "axis of orientation: " << axis << std::endl;
+		output_file << "eccentricity: " << eccentricity << std::endl;
+		output_file << std::endl;
+	}
+
+    cv::imshow("threshold_image", output);
+    cv::imshow("component_output", component_output);
+    cv::imshow("orientation", orientation);
+    cv::waitKey(5);
+  
+
 
 
 
